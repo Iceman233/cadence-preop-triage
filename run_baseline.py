@@ -17,10 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from core import (
-    PatientSubmission,
-    triage_submission,
-)
+from core import triage_submission
 
 ROOT = Path(__file__).resolve().parent
 
@@ -30,7 +27,8 @@ DEFAULT_MODEL = "gpt-4.1-mini"
 @dataclass
 class BaselineInputCase:
     case_id: str
-    submission: PatientSubmission
+    # Raw dict, passed through untouched: schema validation would drop unknown fields.
+    submission: dict[str, Any]
 
 
 def parse_args() -> argparse.Namespace:
@@ -49,6 +47,12 @@ def parse_args() -> argparse.Namespace:
         "--model",
         default=DEFAULT_MODEL,
         help="OpenAI model id",
+    )
+    parser.add_argument(
+        "--extractor",
+        choices=["heuristic", "llm"],
+        default=None,
+        help="Document extractor (default: $TRIAGE_EXTRACTOR or heuristic)",
     )
     parser.add_argument(
         "--max-records",
@@ -74,12 +78,12 @@ def load_cases(path: Path) -> list[BaselineInputCase]:
             ):
                 case = BaselineInputCase(
                     case_id=str(payload["case_id"]),
-                    submission=PatientSubmission.model_validate(payload["submission"]),
+                    submission=payload["submission"],
                 )
             else:
                 case = BaselineInputCase(
                     case_id=f"case_{idx:05d}",
-                    submission=PatientSubmission.model_validate(payload),
+                    submission=payload,
                 )
             cases.append(case)
     return cases
@@ -99,7 +103,7 @@ def main() -> None:
     with output_path.open("w", encoding="utf-8") as handle:
         for idx, case in enumerate(cases):
             print(f"[{idx + 1}/{len(cases)}] Running baseline inference")
-            submission = case.submission.model_dump()
+            submission = case.submission
             row: dict[str, Any] = {
                 "record_index": idx,
                 "case_id": case.case_id,
@@ -113,6 +117,7 @@ def main() -> None:
                 output = triage_submission(
                     submission=submission,
                     model=args.model,
+                    extractor=args.extractor,
                 )
                 row["output"] = output.model_dump()
             except Exception as exc:  # pragma: no cover - network/runtime failure path

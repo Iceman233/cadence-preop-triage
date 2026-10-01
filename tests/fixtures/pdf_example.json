@@ -1,0 +1,24 @@
+{
+  "patient": {"id": "14401b46-16cf-5c04-b43a-fec3e8485985", "mrn": "MRN-3000000", "name": {"given": "Danielle", "family": "Lopez"}, "dob": "1946-01-01", "sex": "F"},
+  "procedure": {"case_id": "case_00000", "procedure_type": "Elective total knee arthroplasty", "procedure_risk": "MODERATE", "procedure_date": null, "is_elective": true, "location": "Cadence Surgical Center - Main OR"},
+  "vitals": [
+    {"type": "blood_pressure", "systolic": 117, "diastolic": 72, "date": "2026-02-17T09:05:00Z", "source": "Pre-op clinic"},
+    {"type": "blood_pressure", "systolic": 122, "diastolic": 76, "date": "2026-02-24T10:12:00Z", "source": "Primary care visit"},
+    {"type": "temperature", "value_f": 98.8, "date": "2026-02-24T10:15:00Z", "source": "Pre-op clinic"}
+  ],
+  "labs": [
+    {"id": "69d20291-f423-54f9-9d5c-14b6608351c4", "code": "CBC", "display": "Complete Blood Count", "effective_at": "2026-02-21T08:10:00Z", "status": "final", "source": "Internal Hospital Lab"},
+    {"id": "58de471c-f6b4-5567-9b57-819f93e57e67", "code": "CBC", "display": "CBC (Complete Blood Count)", "effective_at": "2026-02-03T08:25:00Z", "status": "final", "source": "Internal Hospital Lab"},
+    {"id": "682bf9a8-3325-57bf-a231-5f8ad1185692", "code": "HBA1C", "display": "Hemoglobin A1c", "effective_at": "2026-02-09T07:40:00Z", "status": "final", "source": "Regional Reference Lab"}
+  ],
+  "medications": [{"name": "lisinopril", "active": true}, {"name": "apixaban", "active": true}],
+  "conditions": [{"name": "Atrial fibrillation", "active": true}],
+  "documents": [
+    {"doc_id": "c92f23f5-bc1f-54cb-911f-c719bc7df37b", "type": "History and Physical", "date": "2026-02-19", "author": "Danielle Rivera, APRN", "text": "HISTORY AND PHYSICAL: pre-op evaluation complete for planned procedure. Procedure date target: 2026-03-01."},
+    {"doc_id": "bdb55172-db02-5721-a48e-81b81b300312", "type": "Preop Pre-anesthesia Evaluation [PDF]", "date": "2026-01-30", "author": "Brian N. Murphy, MSN, NP-C", "text": "Prior pre-op H&P retained for longitudinal chart context."},
+    {"doc_id": "ffd06a2d-6fc3-5243-9189-6054e87f1c86", "type": "Surgical Consent", "date": "2026-02-23", "author": "Brian O'Connor, DO", "text": "Electronic consent obtained and signed by patient for procedure."},
+    {"doc_id": "43d8b80c-0050-5954-a60a-4964b07f0ae3", "type": "Pre-op Nursing Intake", "date": "2026-02-25", "author": "Sarah Murphy, DNP, FNP-BC", "text": "Nursing intake confirms home medications and fasting instructions were reviewed."},
+    {"doc_id": "0e230e4e-469c-503f-9ad7-9ce6d086ab84", "type": "Perioperative Medication Plan", "date": "2026-02-22", "author": "Stephanie Rodriguez, DO", "text": "Patient takes apixaban for atrial fibrillation. Follow up with cardiology for peri-op recommendations."}
+  ],
+  "metadata": {"submission_received_at": "2026-03-01T14:22:10Z", "source_system": "Cadence Intake API v2"}
+}

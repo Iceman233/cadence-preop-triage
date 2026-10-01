@@ -31,3 +31,9 @@ dist/
 data/baseline_outputs.jsonl
 data/eval_report.json
 data/determinism_report.json
+
+# Triage artifacts
+data/.cache/
+data/paraphrased_*.jsonl
+data/out_*.jsonl
+data/report_*.json

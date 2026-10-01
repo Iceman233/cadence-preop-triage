@@ -3,14 +3,16 @@ OUTPUT ?= data/baseline_outputs.jsonl
 REPORT ?= data/eval_report.json
 DETERMINISM_REPORT ?= data/determinism_report.json
 MODEL ?= gpt-4.1-mini
+EXTRACTOR ?= heuristic
 
-.PHONY: baseline evals determinism score report test all clean
+.PHONY: baseline evals evals-local determinism robustness score report test all clean
 
 baseline:
 	uv run run_baseline.py \
 		--input $(INPUT) \
 		--output $(OUTPUT) \
-		--model $(MODEL)
+		--model $(MODEL) \
+		--extractor $(EXTRACTOR)
 
 evals:
 	uv run run_evals.py \
@@ -18,12 +20,25 @@ evals:
 		--outputs $(OUTPUT) \
 		--report $(REPORT)
 
-determinism:
+# Same scoring without the hosted OpenAI Evals run; needs no API key.
+evals-local:
 	uv run run_evals.py \
+		--local-only \
+		--input $(INPUT) \
+		--outputs $(OUTPUT) \
+		--report $(REPORT)
+
+determinism:
+	TRIAGE_EXTRACTOR=$(EXTRACTOR) uv run run_evals.py \
 		--determinism \
 		--input $(INPUT) \
 		--model $(MODEL) \
 		--report $(DETERMINISM_REPORT)
+
+# Original sample plus meaning-preserving paraphrases (in-sample vs out-of-sample).
+robustness:
+	uv run --with 'pydantic>=2.8.0' --with 'openai>=2.0.0' \
+		scripts/robustness.py --extractor $(EXTRACTOR) --model $(MODEL)
 
 score:
 	@python3 -c 'import json; r=json.load(open("$(REPORT)")); s=(r.get("primary_score",{}) or {}).get("value_pct"); print(s if s is not None else r.get("local_metrics_summary",{}).get("aggregate_local_score_pct", 0.0))'
