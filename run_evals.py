@@ -76,6 +76,11 @@ def parse_args() -> argparse.Namespace:
         help="Timeout while waiting for eval run completion",
     )
     parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="Score locally and skip the hosted OpenAI Evals run (no API key needed)",
+    )
+    parser.add_argument(
         "--determinism",
         action="store_true",
         help="Run 10x deterministic replay check instead of eval scoring",
@@ -406,6 +411,23 @@ def _summarize_local_rows(local_rows: list[dict[str, object]]) -> dict[str, obje
     )
     summary["primary_score_pct"] = summary["aggregate_local_score_pct"]
 
+    # Safety view: rows are the oracle decision, columns are ours. A READY where the
+    # oracle says otherwise is the costliest error, so it gets its own counter.
+    confusion: dict[str, dict[str, int]] = {}
+    for row in local_rows:
+        expected = row["label"]["decision"]
+        actual = (row.get("parsed_output") or {}).get("decision", "INVALID")
+        bucket = confusion.setdefault(expected, {})
+        bucket[actual] = bucket.get(actual, 0) + 1
+    summary["decision_confusion"] = confusion
+    summary["false_ready_count"] = sum(
+        count
+        for expected, row in confusion.items()
+        if expected != "READY"
+        for actual, count in row.items()
+        if actual == "READY"
+    )
+
     return summary
 
 
@@ -417,6 +439,23 @@ def run_eval_mode(args: argparse.Namespace) -> dict[str, object]:
     outputs_by_index = load_baseline_outputs(outputs_path)
 
     content_rows, local_rows = _build_eval_items(cases, outputs_by_index)
+
+    local_metrics_summary = _summarize_local_rows(local_rows)
+    primary_score_pct = float(local_metrics_summary.get(PRIMARY_SCORE_NAME, 0.0))
+
+    if args.local_only:
+        # The hosted run re-applies the same string checks; the local metrics are the score.
+        return {
+            "generated_at": datetime.now(tz=UTC).isoformat(),
+            "mode": "eval",
+            "primary_score": {
+                "name": PRIMARY_SCORE_NAME,
+                "value_pct": primary_score_pct,
+                "goal": "maximize",
+            },
+            "local_metrics_summary": local_metrics_summary,
+            "records": local_rows,
+        }
 
     client = OpenAI()
     eval_obj = _create_eval(client)
@@ -436,9 +475,6 @@ def run_eval_mode(args: argparse.Namespace) -> dict[str, object]:
         limit=max(100, len(content_rows)),
     )
     output_items = list(output_items_page.data)
-
-    local_metrics_summary = _summarize_local_rows(local_rows)
-    primary_score_pct = float(local_metrics_summary.get(PRIMARY_SCORE_NAME, 0.0))
 
     report = {
         "generated_at": datetime.now(tz=UTC).isoformat(),
@@ -568,6 +604,10 @@ def main() -> None:
             report.get("local_metrics_summary", {}).get(PRIMARY_SCORE_NAME, 0.0),
         )
         print(f"Primary score ({name}): {value}%")
+        summary = report.get("local_metrics_summary", {})
+        for metric_name in METRIC_WEIGHTS:
+            print(f"  {metric_name}: {summary.get(f'{metric_name}_rate_pct')}%")
+        print(f"  false_ready_count: {summary.get('false_ready_count')}")
 
 
 if __name__ == "__main__":
