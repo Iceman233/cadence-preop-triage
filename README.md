@@ -1,95 +1,72 @@
-# Pre-Op Triage Take-Home
+# Pre-Op Scheduling Triage
 
-## Objective
+Evaluates one pre-op submission package against the Cadence Surgical Center scheduling
+policy and returns `READY`, `NEEDS_FOLLOW_UP`, or `NOT_CLEARED`, with every issue tied to
+the exact field, value, or document excerpt it came from.
 
-Implement `triage_submission(...)` in `core.py` - it is a pre-op triage function for a single submission package. It is currently a naive LLM-based solution that makes a real model API call. The starter implementation intentionally does not follow some best practices in using the OpenAI API. You may use whatever file structure makes sense for your solution.
-
-Your output must match this schema:
-
-- `decision`: `READY | NEEDS_FOLLOW_UP | NOT_CLEARED`
-- `issues[]`: `category` + evidence (how you design this is up to you)
-- `explanation`
-
-## What Is Provided
-
-- `data/patients_sample_50.jsonl` includes:
-  - `case_id`
-  - `submission`
-  - `label` (what a human labeled this case as)
-- `run_baseline.py` runs your `triage_submission` implementation and writes outputs.
-- `run_evals.py` scores outputs against provided `label` and can run determinism checks.
-
-## Completion
-
-Note: this exercise is evaluated on engineering judgment. You may not reach a 100% score, and that is OK! We are looking to understand how you approached the problem and designed a working solution.
+**Design in one line:** an extractor (LLM or rule-based) reads each document and reports
+quoted facts; deterministic code applies the policy and makes the decision. See
+[WRITEUP.md](WRITEUP.md) for the approach, design decisions, assumptions, and results.
 
 ## Setup
 
-1. Confirm `uv` is installed.
-
 ```bash
-uv --version
+curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is not installed
+export OPENAI_API_KEY="..."                        # only for the LLM extractor / hosted evals
 ```
 
-2. Set your OpenAI API key.
+`uv` provisions Python 3.11+ and dependencies per script; there is no separate install step.
 
-```bash
-export OPENAI_API_KEY="<your_api_key>"
+## Run
+
+| Command | What it does | Needs API key |
+|---|---|---|
+| `make test` | 45 unit/edge-case tests (fake LLM client, no network) | no |
+| `make baseline` | Triage all sample cases -> `data/baseline_outputs.jsonl` | only with `EXTRACTOR=llm` |
+| `make evals-local` | Score outputs locally (schema, decision, categories, confusion matrix, false READYs) | no |
+| `make evals` | Same scoring, plus the hosted OpenAI Evals run from the starter | yes |
+| `make determinism` | Same case 10x, checks exact-output stability | only with `EXTRACTOR=llm` |
+| `make robustness` | Original sample + meaning-preserving paraphrases (in- vs out-of-sample) | only with `EXTRACTOR=llm` |
+| `make report` | Interactive TUI over the eval report | no |
+
+Choose the document extractor with `EXTRACTOR=heuristic` (default) or `EXTRACTOR=llm`,
+e.g. `make baseline evals-local EXTRACTOR=llm MODEL=gpt-4.1-mini`. In LLM mode the
+heuristic extractor remains the per-document fallback, and responses are cached under
+`data/.cache/llm/` (disable with `TRIAGE_LLM_CACHE=0`).
+
+Programmatic use:
+
+```python
+from core import triage_submission
+output = triage_submission(submission_dict, model="gpt-4.1-mini", extractor="heuristic")
+print(output.model_dump_json(indent=2))
 ```
 
-## Recommended Workflow
+## Layout
 
-1. Implement `triage_submission` in `core.py`.
-2. Run baseline outputs:
-
-```bash
-make baseline
+```
+core.py               harness entry point: triage_submission(submission, model=...)
+triage/
+  policy.py           all policy numbers and vocabularies (windows, thresholds, lab aliases, drug classes)
+  normalize.py        lenient parse of the raw submission (never raises, never drops fields)
+  schema.py           DocumentFacts: the extraction contract shared by both extractors
+  heuristic.py        rule-based extractor (offline fallback, rules-only baseline)
+  llm.py              OpenAI extractor: strict structured output, quote verification, cache
+  tripwires.py        safety net: raw-text signals no extracted fact accounts for -> UNKNOWN
+  rules.py            one function per policy rule -> PASS / FAIL / UNKNOWN findings
+  engine.py           orchestration, decision precedence, deterministic rendering
+scripts/perturb.py    meaning-preserving paraphrase generator
+scripts/robustness.py in-sample vs paraphrase scoring table
+tests/                end-to-end edge cases (one per labeled rationale pattern) + LLM extractor tests
 ```
 
-3. Run eval scoring:
+## Changes to the starter harness
 
-```bash
-make evals
-```
-
-4. Run determinism check:
-
-```bash
-make determinism
-```
-
-5. Print score:
-
-```bash
-make score
-```
-
-6. View the interactive report (TUI):
-
-```bash
-make report
-```
-
-This opens a terminal UI (`view_report.py`) that shows per-case results side-by-side with oracle expectations. You can browse records, see metric pass/fail status, and inspect submission data. Press `f` on a metric row to filter the case list to failures. Press `q` to quit.
-
-## Tests
-
-Run the unit tests with:
-
-```bash
-make test
-```
-
-## Outputs
-
-- Baseline outputs: `data/baseline_outputs.jsonl`
-- Eval report: `data/eval_report.json`
-- Determinism report: `data/determinism_report.json`
-
-## Configurable Variables
-
-- `MODEL` (default `gpt-4.1-mini`)
-- `INPUT` (default `data/patients_sample_50.jsonl`)
-- `OUTPUT` (default `data/baseline_outputs.jsonl`)
-- `REPORT` (default `data/eval_report.json`)
-- `DETERMINISM_REPORT` (default `data/determinism_report.json`)
+- `run_evals.py`: `--local-only` (score without the hosted Evals API), decision confusion
+  matrix, and a `false_ready_count` in the summary.
+- `run_baseline.py`: passes the **raw** submission to triage (validating through the
+  starter's pydantic schema silently dropped unknown fields such as a `value_c`
+  temperature, and crashed on unexpected enum values); adds `--extractor`.
+- `Makefile`: `evals-local`, `robustness`, and `EXTRACTOR`.
+- `tests/`: the starter tests asserted details of the single-LLM-call baseline and were
+  replaced.
