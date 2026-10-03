@@ -37,3 +37,6 @@ data/.cache/
 data/paraphrased_*.jsonl
 data/out_*.jsonl
 data/report_*.json
+data/llm_*.json*
+data/determinism_llm_*.json
+data/robustness_*.txt

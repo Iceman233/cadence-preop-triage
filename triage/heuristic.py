@@ -28,7 +28,7 @@ from .schema import (
 HP_TYPE_RE = re.compile(
     r"\bh\s*&\s*p\b|\bh and p\b|history\s*(?:and|&)\s*(?:physical|pyhsical)", re.I
 )
-HP_HEADING_RE = re.compile(r"history\s*(?:and|&)\s*physical", re.I)
+HP_HEADING_RE = re.compile(r"history\s*(?:and|&)\s*physical|^\W*h\s*&\s*p\b", re.I)
 CONSENT_RE = re.compile(r"consent", re.I)
 
 # "08:30", including "at 08:30: BP ..." (trailing colon), but not "08:30:15".
@@ -311,6 +311,28 @@ def anticoag_plans(text: str) -> list[AnticoagPlan]:
                         plan["bridging_agents"].append(agent)
 
     return [AnticoagPlan(**plan) for plan in plans.values()]
+
+
+def reconcile_identity(doc: Document, facts: DocumentFacts) -> tuple[DocumentFacts, str | None]:
+    """Document identity comes from its title or opening heading, not from an extractor.
+
+    Records systems label document types, while content-based classification by a model
+    proved over-inclusive (pre-admission and anesthesia notes read as H&Ps, which would
+    falsely satisfy Rule 1). An extractor's content facts are kept; only the kind is
+    fixed. Returns the facts and a note when the extractor disagreed.
+    """
+
+    kind = classify(doc)
+    if kind == facts.doc_kind:
+        return facts, None
+    note = f"doc_kind {facts.doc_kind} overridden to {kind} by title/heading"
+    return facts.model_copy(
+        update={
+            "doc_kind": kind,
+            "hp": (facts.hp or hp_facts(doc)) if kind == "HISTORY_AND_PHYSICAL" else None,
+            "consent": (facts.consent or consent_facts(doc)) if kind == "SURGICAL_CONSENT" else None,
+        }
+    ), note
 
 
 # -------------------------

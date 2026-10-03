@@ -50,7 +50,10 @@ def _extract_one(
 
     for name, extractor in extractors:
         try:
-            return ExtractedDocument(doc, extractor(doc, context), name), None
+            facts, note = heuristic.reconcile_identity(doc, extractor(doc, context))
+            if note:
+                log.info("documents[%d] (%s): %s", doc.index, name, note)
+            return ExtractedDocument(doc, facts, name), None
         except Exception as exc:  # noqa: BLE001 - any extractor failure falls through
             log.warning("extractor %s failed on documents[%d]: %s", name, doc.index, exc)
     failure = Finding(
