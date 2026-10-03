@@ -62,6 +62,43 @@ raw JSON ─► lenient parse ─► per-document extraction ─► tripwires �
    direction. A real H&P filed under an unrelated title would now be missed, which
    fails safe (follow-up).
 
+## Source of truth
+
+The Cadence Pre-Operative Scheduling Policy is the only source of decision criteria.
+
+**From the policy, and nothing else:** the three statuses and their precedence; the H&P
+30-day window and signed consent (Rule 1); CBC within 30 days for LOW/MODERATE risk, CBC
+and CMP within 14 days for HIGH risk, most recent result only (Rule 2); a perioperative
+plan covering before **and** after the procedure for patients taking an anticoagulant
+(Rule 3); systolic >= 180, diastolic >= 110, temperature > 100.4 F, most recent reading
+(Rule 4); and "a required field that is missing or unknown means NEEDS_FOLLOW_UP." The
+only clinical numbers in `policy.py` are these.
+
+**No external criteria were added.** The submissions contain PT-INR, HbA1c, creatinine,
+ASA class, and age; none is used. A guideline-driven system might require, say, INR < 1.5
+for warfarin patients; this one does not. Plans are checked for a concrete pre-op and
+post-op step, never for clinical adequacy (whether "hold 2 days" is long enough for a
+given drug is not judged).
+
+**Interpretation aids.** The policy uses terms it does not define, so the record has to
+be interpreted. Following the starter's own guidance ("general clinical knowledge may be
+used to interpret the record, e.g. drug brand names, unit conversions, not to add
+criteria"), these come from general knowledge:
+
+| Aid | Why it is needed | Effect on decisions |
+|---|---|---|
+| Which drugs are anticoagulants, with brand names (Eliquis = apixaban) | Rule 3 says "anticoagulant medication" without a list | **The most consequential one**: it decides whether Rule 3 applies. Classification, not a guideline. |
+| Aspirin and clopidogrel are antiplatelets, not anticoagulants | Same | No plan required. Matches the human labels (cases 2, 25). |
+| Bridging agents (enoxaparin) inside another drug's plan need no plan of their own | A bridge is part of a plan, not a home medication | Interpretation; see limitations. |
+| Lab naming: Hemogram = CBC; a BMP is not a CMP | Codes and display names vary | Naming only. Matches the labels (case 17). |
+| Celsius to Fahrenheit | Some notes record Celsius | Unit conversion only. |
+| Plausible ranges used to *find* vitals in text (BP 60-300, temperature 30-45 C / 85-115 F) | Tell a BP from a date such as 03/15 | Pattern recognition only, never a clinical threshold. |
+| The LLM's own drug knowledge | Names not on the list | Used only for unlisted names inside documents; the list always wins. |
+
+Every other choice that goes beyond the policy text (inclusive windows, review time,
+tie-breaks, consent supersession) is an interpretation of the policy rather than a
+medical criterion, and is listed under Assumptions.
+
 ## Results
 
 Sample set (50 cases), `make evals-local` and `make robustness`, model `gpt-4.1-mini`:
@@ -125,6 +162,13 @@ so they are a held-out check (though still synthetic, and written by me).
 
 - **Synthetic evaluation.** Both the sample and the paraphrases are templated text. The
   LLM's 100% shows the pipeline works end to end, not that it is production-accurate.
+- **Long-term enoxaparin or heparin** (a home medication, not a bridge) may not get a
+  matching plan: the rule-based extractor only records those drugs as bridging agents
+  inside another drug's plan (the LLM extractor may or may not). The result fails safe
+  (follow-up) but is wrong.
+- **Out-of-range vitals are ignored, not flagged.** A typo such as "BP 310/90" falls
+  outside the plausibility ranges used to find readings in text, so neither the
+  extractor nor the tripwire reports it. It should be surfaced as unverified.
 - **Unlisted drugs on the structured med list** are not classified (the LLM classifies
   unknown names only inside documents). A small classification call for unrecognized
   structured medication names would close this gap.
