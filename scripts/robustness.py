@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from perturb import GROUPS, perturb_text  # noqa: E402
 
-from core import triage_submission  # noqa: E402
+from core import resolve_mode, triage_submission  # noqa: E402
 
 
 def score(rows: list[dict], extractor: str, model: str) -> dict[str, float]:
@@ -43,14 +43,14 @@ def score(rows: list[dict], extractor: str, model: str) -> dict[str, float]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--input", default=str(ROOT / "data" / "patients_sample_50.jsonl"))
-    parser.add_argument("--extractor", choices=["heuristic", "llm"], default="heuristic")
+    parser.add_argument("--extractor", choices=["auto", "heuristic", "llm"], default="auto")
     parser.add_argument("--model", default="gpt-4.1-mini")
     args = parser.parse_args()
 
     base = [json.loads(line) for line in open(args.input, encoding="utf-8")]
     sets = {"original": []} | {g: [g] for g in sorted(GROUPS)} | {"all": sorted(GROUPS)}
 
-    print(f"extractor={args.extractor}")
+    print(f"extractor={resolve_mode(args.extractor)}")
     print(f"{'set':<12} {'score':>6} {'decision':>9} {'categories':>11} {'false_ready':>12}")
     for name, groups in sets.items():
         rows = json.loads(json.dumps(base))

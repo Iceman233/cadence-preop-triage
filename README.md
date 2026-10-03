@@ -12,7 +12,7 @@ quoted facts; deterministic code applies the policy and makes the decision. See
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is not installed
-export OPENAI_API_KEY="..."                        # only for the LLM extractor / hosted evals
+export OPENAI_API_KEY="..."   # or put OPENAI_API_KEY=... in a local .env (gitignored; make reads it)
 ```
 
 `uv` provisions Python 3.11+ and dependencies per script; there is no separate install step.
@@ -21,24 +21,25 @@ export OPENAI_API_KEY="..."                        # only for the LLM extractor 
 
 | Command | What it does | Needs API key |
 |---|---|---|
-| `make test` | 49 unit/edge-case tests (fake LLM client, no network) | no |
-| `make baseline` | Triage all sample cases -> `data/baseline_outputs.jsonl` | only with `EXTRACTOR=llm` |
+| `make test` | 50 unit/edge-case tests (fake LLM client, no network) | no |
+| `make baseline` | Triage all sample cases -> `data/baseline_outputs.jsonl` | uses it if set |
 | `make evals-local` | Score outputs locally (schema, decision, categories, confusion matrix, false READYs) | no |
 | `make evals` | Same scoring, plus the hosted OpenAI Evals run from the starter | yes |
-| `make determinism` | Same case 10x, checks exact-output stability | only with `EXTRACTOR=llm` |
-| `make robustness` | Original sample + meaning-preserving paraphrases (in- vs out-of-sample) | only with `EXTRACTOR=llm` |
+| `make determinism` | Same case 10x, checks exact-output stability | uses it if set |
+| `make robustness` | Original sample + meaning-preserving paraphrases (in- vs out-of-sample) | uses it if set |
 | `make report` | Interactive TUI over the eval report | no |
 
-Choose the document extractor with `EXTRACTOR=heuristic` (default) or `EXTRACTOR=llm`,
-e.g. `make baseline evals-local EXTRACTOR=llm MODEL=gpt-4.1-mini`. In LLM mode the
-heuristic extractor remains the per-document fallback, and responses are cached under
-`data/.cache/llm/` (disable with `TRIAGE_LLM_CACHE=0`).
+The document extractor defaults to `auto`: the LLM extractor when `OPENAI_API_KEY` is set,
+the rule-based extractor otherwise. Force one with `EXTRACTOR=llm` or `EXTRACTOR=heuristic`,
+e.g. `make baseline evals-local EXTRACTOR=heuristic`. In LLM mode the heuristic extractor
+remains the per-document fallback, and responses are cached under `data/.cache/llm/`
+(disable with `TRIAGE_LLM_CACHE=0`).
 
 Programmatic use:
 
 ```python
 from core import triage_submission
-output = triage_submission(submission_dict, model="gpt-4.1-mini", extractor="heuristic")
+output = triage_submission(submission_dict, model="gpt-4.1-mini")  # extractor="auto" | "llm" | "heuristic"
 print(output.model_dump_json(indent=2))
 ```
 
@@ -67,6 +68,7 @@ tests/                end-to-end edge cases (one per labeled rationale pattern) 
 - `run_baseline.py`: passes the **raw** submission to triage (validating through the
   starter's pydantic schema silently dropped unknown fields such as a `value_c`
   temperature, and crashed on unexpected enum values); adds `--extractor`.
-- `Makefile`: `evals-local`, `robustness`, and `EXTRACTOR`.
+- `Makefile`: `evals-local`, `robustness`, `EXTRACTOR` (default `auto`), and reading
+  `OPENAI_API_KEY` from a local `.env`.
 - `tests/`: the starter tests asserted details of the single-LLM-call baseline and were
   replaced.

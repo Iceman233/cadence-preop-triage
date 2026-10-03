@@ -3,7 +3,14 @@ OUTPUT ?= data/baseline_outputs.jsonl
 REPORT ?= data/eval_report.json
 DETERMINISM_REPORT ?= data/determinism_report.json
 MODEL ?= gpt-4.1-mini
-EXTRACTOR ?= heuristic
+# auto = LLM extractor when OPENAI_API_KEY is set, rule-based extractor otherwise.
+EXTRACTOR ?= auto
+
+# Pick up OPENAI_API_KEY from a local, gitignored .env if present.
+ifneq (,$(wildcard .env))
+include .env
+export OPENAI_API_KEY
+endif
 
 .PHONY: baseline evals evals-local determinism robustness score report test all clean
 

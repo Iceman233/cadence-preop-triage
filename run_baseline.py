@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from core import triage_submission
+from core import resolve_mode, triage_submission
 
 ROOT = Path(__file__).resolve().parent
 
@@ -50,9 +50,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--extractor",
-        choices=["heuristic", "llm"],
+        choices=["auto", "heuristic", "llm"],
         default=None,
-        help="Document extractor (default: $TRIAGE_EXTRACTOR or heuristic)",
+        help="Document extractor (default: $TRIAGE_EXTRACTOR or auto = llm if OPENAI_API_KEY is set)",
     )
     parser.add_argument(
         "--max-records",
@@ -97,6 +97,7 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     cases = load_cases(input_path)
+    print(f"extractor={resolve_mode(args.extractor)} model={args.model}")
     if args.max_records > 0:
         cases = cases[: args.max_records]
 

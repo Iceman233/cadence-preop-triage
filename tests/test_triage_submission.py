@@ -337,6 +337,17 @@ def test_extractor_failure_falls_back_then_fails_closed(ready):
     assert categories(output) >= {"MISSING_REQUIRED_DATA"}
 
 
+def test_auto_mode_follows_api_key(monkeypatch):
+    from core import resolve_mode
+
+    monkeypatch.delenv("TRIAGE_EXTRACTOR", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    assert resolve_mode() == "heuristic"
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    assert resolve_mode() == "llm"
+    assert resolve_mode("heuristic") == "heuristic"
+
+
 def test_output_schema_is_valid_json(ready):
-    output = triage_submission(ready, model="unused")
+    output = triage_submission(ready, model="unused", extractor="heuristic")
     assert TriageOutput.model_validate(json.loads(output.model_dump_json())) == output

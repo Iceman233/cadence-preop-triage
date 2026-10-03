@@ -86,17 +86,26 @@ def triage_output_json_schema() -> dict[str, object]:
 EXTRACTOR_ENV = "TRIAGE_EXTRACTOR"
 
 
+def resolve_mode(mode: str | None = None) -> str:
+    """'auto' (the default) uses the LLM extractor when an OpenAI key is configured."""
+
+    mode = (mode or os.environ.get(EXTRACTOR_ENV) or "auto").lower()
+    if mode == "auto":
+        return "llm" if os.environ.get("OPENAI_API_KEY") else "heuristic"
+    return mode
+
+
 def build_extractors(model: str, mode: str | None = None) -> list[tuple[str, Extractor]]:
     """Extractor chain for a run. The heuristic extractor is always the last resort."""
 
-    mode = (mode or os.environ.get(EXTRACTOR_ENV) or "heuristic").lower()
+    mode = resolve_mode(mode)
     chain: list[tuple[str, Extractor]] = []
     if mode == "llm":
         from triage.llm import LLMExtractor  # lazy: the heuristic path needs no OpenAI SDK
 
         chain.append(("llm", LLMExtractor(model=model)))
     elif mode != "heuristic":
-        raise ValueError(f"{EXTRACTOR_ENV} must be 'heuristic' or 'llm', got {mode!r}")
+        raise ValueError(f"{EXTRACTOR_ENV} must be 'auto', 'heuristic' or 'llm', got {mode!r}")
     chain.append(("heuristic", heuristic.extract))
     return chain
 
