@@ -21,7 +21,7 @@ export OPENAI_API_KEY="..."                        # only for the LLM extractor 
 
 | Command | What it does | Needs API key |
 |---|---|---|
-| `make test` | 45 unit/edge-case tests (fake LLM client, no network) | no |
+| `make test` | 49 unit/edge-case tests (fake LLM client, no network) | no |
 | `make baseline` | Triage all sample cases -> `data/baseline_outputs.jsonl` | only with `EXTRACTOR=llm` |
 | `make evals-local` | Score outputs locally (schema, decision, categories, confusion matrix, false READYs) | no |
 | `make evals` | Same scoring, plus the hosted OpenAI Evals run from the starter | yes |

@@ -55,37 +55,58 @@ raw JSON ─► lenient parse ─► per-document extraction ─► tripwires �
    `policy.py`. Lookup lists are checked before any model judgment: aspirin and
    clopidogrel are antiplatelets regardless of what a model says; the LLM's drug class is
    used only for names the list does not know.
+8. **Document identity is deterministic; document content is extracted.** Whether a
+   document *is* an H&P or a consent comes from its title or opening heading
+   (typo-tolerant: "History and Pyhsical"). In live runs the model labeled pre-admission
+   and anesthesia notes as H&Ps, which would falsely satisfy Rule 1, the dangerous
+   direction. A real H&P filed under an unrelated title would now be missed, which
+   fails safe (follow-up).
 
 ## Results
 
-Sample set (50 cases), `make evals-local` / `make robustness`:
+Sample set (50 cases), `make evals-local` and `make robustness`, model `gpt-4.1-mini`:
 
-| Set | Heuristic score | Heuristic decision | False READY | LLM extractor |
-|---|---|---|---|---|
-| Original (in-sample) | 100.0 | 100% | 0 | *pending API key* |
-| Paraphrased vitals | 57.3 | 54% | 0 | *pending* |
-| Paraphrased consent | 63.3 | 66% | 0 | *pending* |
-| Paraphrased plans | 93.3 | 92% | 0 | *pending* |
-| Paraphrased medications | 99.3 | 100% | 0 | *pending* |
-| All paraphrases | 53.3 | 54% | 0 | *pending* |
+| Set | Heuristic score | Heuristic decision | LLM score | LLM decision | False READY (both) |
+|---|---|---|---|---|---|
+| Original | 100.0 | 100% | 100.0 | 100% | 0 |
+| Paraphrased vitals | 57.3 | 54% | 100.0 | 100% | 0 |
+| Paraphrased consent | 63.3 | 66% | 100.0 | 100% | 0 |
+| Paraphrased plans | 93.3 | 92% | 100.0 | 100% | 0 |
+| Paraphrased medications | 99.3 | 100% | 100.0 | 100% | 0 |
+| All paraphrases | 53.3 | 54% | 100.0 | 100% | 0 |
 
-Determinism: 100% exact-output match over 10 runs (heuristic extractor).
+The starter's hosted OpenAI Evals run agrees on the original set (50/50 passed).
+Determinism (`make determinism`, case 0, 10 runs): 100% exact-output match for the
+heuristic, and for the LLM both with the cache and with it disabled
+(`TRIAGE_LLM_CACHE=0`), because extraction variation does not reach deterministic
+rendering. That is one case; the per-document cache is what guarantees repeatability.
+LLM cost: one call per document (about 4 s each, run 4 at a time), about 3.5 minutes for
+the 50 cases uncached.
 
-**How to read this.** The 100% is in-sample: the notes are templated and I calibrated
-the heuristic on these 50 cases, so it overstates generalization. To get an honest
-signal I wrote `scripts/perturb.py`, which rewrites the decision-relevant phrases with
-the same meaning (labels still apply). The heuristic's accuracy drops sharply, as
-expected; that gap is what the LLM extractor is for. More importantly, the paraphrase
-suite caught a real design flaw: the first tripwire reused the extractor's own regex,
-so "blood pressure measured at 157 over 117" slipped past both, giving **4 false
-READYs**. A safety net with the extractor's blind spots is not a safety net. After
-making the tripwire independently broader, false READYs are 0 on every set, and
-reworded vitals now land in `NEEDS_FOLLOW_UP` as "unverified." I deliberately did not
-tune the extractor to the paraphrases, which would just overfit a second dataset.
+**How to read this.** The heuristic's 100% is in-sample: the notes are templated and I
+calibrated it on these 50 cases. `scripts/perturb.py` rewrites the decision-relevant
+phrases with the same meaning (labels still apply), and the heuristic drops to 53%.
+That gap is what the LLM extractor is for, and it closes it. The LLM prompt was tuned
+only on failures on the original set; the paraphrase sets were never used for tuning,
+so they are a held-out check (though still synthetic, and written by me).
 
-Spot-checking evidence also caught a bug the score could not: case 32 was correctly
-NOT_CLEARED but cited the arrival BP (196/110) instead of the later recheck (181/98),
-because times written as "at 09:38:" were not parsed. Fixed and covered by a test.
+**What the evaluations caught** (each fixed and covered by a test):
+
+- *Tripwire with the extractor's blind spots.* The first tripwire reused the
+  extractor's regex, so "blood pressure measured at 157 over 117" slipped past both:
+  **4 false READYs** on paraphrased vitals. The tripwire is now independently broader.
+- *Right decision, wrong evidence.* Case 32 was NOT_CLEARED but cited the arrival BP
+  instead of the later recheck, because "at 09:38:" was not parsed as a time.
+- *Live LLM failure modes*, found by verification and tripwires rather than by luck.
+  The first LLM run scored 67% with 0 false READYs, because every model mistake was
+  flagged instead of trusted:
+  - the model mangled "°C" when copying quotes ("\x00b0C", "\x176"), so verbatim quote
+    checks failed. The model now receives ASCII text, and quotes are matched on letters
+    and digits, then mapped back to the document's exact wording for evidence;
+  - one entry carried both a BP and a temperature (now split in code);
+  - quotes stitched together from separate fragments of a line (prompt: one
+    contiguous span; time goes in `time_of_day`);
+  - pre-admission and anesthesia notes classified as H&Ps (decision 8).
 
 ## Assumptions
 
@@ -93,7 +114,7 @@ because times written as "at 09:38:" were not parsed. Fixed and covered by a tes
 |---|---|
 | Review time | `metadata.submission_received_at`; readings dated after it are ignored. |
 | Windows | Calendar days, inclusive (exactly 30 passes). Labs/H&Ps dated after the procedure do not count. |
-| H&P | Any H&P within 30 days counts (the policy does not require a "pre-op" H&P; no non-pre-op H&P in the data falls in the window). Identified by content, not title. If the in-text date of service is older than the document date, the older date is used. |
+| H&P | Any H&P within 30 days counts (the policy does not require a "pre-op" H&P; no non-pre-op H&P in the data falls in the window). Identified by title or opening heading (typo-tolerant), not by model judgment (decision 8). If the in-text date of service is older than the document date, the older date is used. |
 | Consent | Only the **patient's** signature counts, never the physician attestation. A newer consent for the same procedure supersedes an older one. Only an actual procedure mismatch fails; a consent naming no procedure is accepted (as in the prompt's example). |
 | Labs | Usable statuses: final, amended, corrected, or missing. Matched by code or display (CBC/LAB-CBC/Hemogram). A BMP is not a CMP. |
 | Anticoagulants | Active if listed `active: true` or a note says the patient takes it, unless a later fact says stopped. `active: null` or "unable to confirm" → `MISSING_REQUIRED_DATA`. A plan must name the same drug (brand → generic) and give a concrete pre-op **and** post-op step. Bridging agents (enoxaparin) need no plan of their own. Antiplatelets never need one. |
@@ -102,9 +123,8 @@ because times written as "at 09:38:" were not parsed. Fixed and covered by a tes
 
 ## Limitations and next steps
 
-- **LLM results pending.** The extractor, verification, cache, and fallback are built
-  and tested with a fake client, and the schema is verified against OpenAI's strict
-  format. Still to do: run `make robustness EXTRACTOR=llm` and fill in the table.
+- **Synthetic evaluation.** Both the sample and the paraphrases are templated text. The
+  LLM's 100% shows the pipeline works end to end, not that it is production-accurate.
 - **Unlisted drugs on the structured med list** are not classified (the LLM classifies
   unknown names only inside documents). A small classification call for unrecognized
   structured medication names would close this gap.
